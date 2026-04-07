@@ -5,23 +5,26 @@
 extern "C" {
 #endif
 
-    /**
-     * Solves the TSP using Bitmask Dynamic Programming.
-     * Time: O(N^2 * 2^N) | Space: O(N * 2^N)
-     * * @param dist_matrix A 1D array of size N*N representing the adjacency matrix.
-     * @param n The number of cities.
-     * @return The minimum cost, or -1.0 if memory allocation fails.
-     */
-    double tsp_dp(const double* dist_matrix, int n);
+    // Safe Infinity to prevent overflow when adding distances
+#define TSP_INF 1e15
 
     /**
-     * Solves the TSP using Branch and Bound Backtracking.
-     * Time: O(N!) (heavily pruned) | Space: O(N) auxiliary stack
-     * * @param dist_matrix A 1D array of size N*N representing the adjacency matrix.
-     * @param n The number of cities.
+     * Solves TSP using Bitmask Dynamic Programming.
+     * @param dist_matrix 1D array of size N*N (Row-Major).
+     * @param n Number of cities (Max 30 for 32-bit int masks).
+     * @param path Pre-allocated array of size N to store the optimal route.
+     * @return The minimum cost, or -1.0 if memory fails.
+     */
+    double tsp_dp(const double* dist_matrix, int n, int* path);
+
+    /**
+     * Solves TSP using Branch and Bound Backtracking.
+     * @param dist_matrix 1D array of size N*N (Row-Major).
+     * @param n Number of cities.
+     * @param path Pre-allocated array of size N to store the optimal route.
      * @return The minimum cost.
      */
-    double tsp_backtracking(const double* dist_matrix, int n);
+    double tsp_backtracking(const double* dist_matrix, int n, int* path);
 
 #ifdef __cplusplus
 }

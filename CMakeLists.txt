@@ -7,4 +7,5 @@ include_directories(.)
 
 add_executable(UnBound
         tsp_exact.h
-        tsp_exact.c)
+        tsp_exact.c
+        main.c)
