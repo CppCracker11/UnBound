@@ -37,3 +37,9 @@ CMakeCache.txt
 *.obj
 *.a
 *.lib
+
+
+
+!UnBound CLI/
+!UnBound CLI/*.exe
+!UnBound CLI/*.dll
