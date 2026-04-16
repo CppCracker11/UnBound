@@ -33,7 +33,6 @@ add_executable(unbound_cli ${CORE_SOURCES} main.c)
 
 if(OpenMP_C_FOUND)
     target_link_libraries(unbound_cli PRIVATE OpenMP::OpenMP_C)
-    # Explicitly add the flags to the executable target too
     target_compile_options(unbound_cli PRIVATE ${OpenMP_C_FLAGS})
     set_target_properties(unbound_cli PROPERTIES LINK_FLAGS ${OpenMP_C_FLAGS})
 endif()

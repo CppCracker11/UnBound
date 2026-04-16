@@ -6,7 +6,7 @@
 #include "generator.h"
 #include "io_handler.h"
 #include <stdlib.h>
-
+#include "utils.h"
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
 #else

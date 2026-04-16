@@ -20,160 +20,197 @@ static double get_time_ms() {
 }
 #endif
 
+
 Solution tsp_greedy(const Matrix* m) {
     int n = m->n;
     Solution sol = create_solution(n);
-    double start_time = get_time_ms();
 
-    bool* visited = (bool*)calloc(n, sizeof(bool));
+    if (n <= 1) {
+        sol.cost = 0;
+        if (n == 1) sol.path[0] = 0;
+        sol.success = true;
+        return sol;
+    }
+    if (n == 2) {
+        sol.path[0] = 0;
+        sol.path[1] = 1;
+        sol.cost = get_dist(m, 0, 1) * 2;
+        sol.success = true;
+        return sol;
+    }
+
+    double start = get_time_ms();
+    bool* seen = calloc(n, sizeof(bool));
     int curr = 0;
-    visited[curr] = true;
+
+    seen[curr] = true;
     sol.path[0] = curr;
     sol.cost = 0.0;
 
     for (int step = 1; step < n; step++) {
-        int next_node = -1;
-        double min_dist = INF;
+        int next = -1;
+        double min_d = INF;
 
         for (int i = 0; i < n; i++) {
-            if (!visited[i] && get_dist(m, curr, i) < min_dist) {
-                min_dist = get_dist(m, curr, i);
-                next_node = i;
+            if (!seen[i] && get_dist(m, curr, i) < min_d) {
+                min_d = get_dist(m, curr, i);
+                next = i;
             }
         }
 
-        if (next_node == -1) break;
+        if (next == -1) break;
 
-        sol.path[step] = next_node;
-        sol.cost += min_dist;
-        visited[next_node] = true;
-        curr = next_node;
+        sol.path[step] = next;
+        sol.cost += min_d;
+        seen[next] = true;
+        curr = next;
     }
 
     sol.cost += get_dist(m, curr, 0);
     sol.success = true;
-    sol.time_ms = get_time_ms() - start_time;
+    sol.time_ms = get_time_ms() - start;
 
-    free(visited);
+    free(seen);
     return sol;
 }
 
-// Edge-Tracking Eulerian Circuit Helper
-static void find_eulerian_circuit(int u, int** adj, int* mg_degree, int** edge_exists, int* path, int* path_idx) {
-    for (int v_idx = 0; v_idx < mg_degree[u]; v_idx++) {
-        int v = adj[u][v_idx];
-        if (edge_exists[u][v] > 0) {
-            edge_exists[u][v]--; // Consume one edge
-            edge_exists[v][u]--; // Symmetric consumption
-            find_eulerian_circuit(v, adj, mg_degree, edge_exists, path, path_idx);
+// local stack eulerian to prevent overflow
+static void find_eulerian_circuit_iterative(int start_node, int** adj, int* mg_deg, int** edges, int* path, int* p_idx) {
+    int* stack = malloc(10000 * sizeof(int));
+    int top = 0;
+    stack[top++] = start_node;
+
+    while (top > 0) {
+        int u = stack[top - 1];
+        bool found = false;
+
+        for (int i = 0; i < mg_deg[u]; i++) {
+            int v = adj[u][i];
+            if (edges[u][v] > 0) {
+                edges[u][v]--;
+                edges[v][u]--;
+                stack[top++] = v;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            path[(*p_idx)++] = u;
+            top--;
         }
     }
-    path[(*path_idx)++] = u; // Add to path on backtrack
+    free(stack);
 }
+
 
 Solution tsp_christofides(const Matrix* m) {
     int n = m->n;
     Solution sol = create_solution(n);
-    double start_time = get_time_ms();
 
-    int edge_count;
-    Edge* mst = get_mst(m, &edge_count);
+    if (n <= 1) {
+        sol.cost = 0;
+        if (n == 1) sol.path[0] = 0;
+        sol.success = true;
+        return sol;
+    }
+    if (n == 2) {
+        sol.path[0] = 0;
+        sol.path[1] = 1;
+        sol.cost = get_dist(m, 0, 1) * 2;
+        sol.success = true;
+        return sol;
+    }
+
+    double t_start = get_time_ms();
+
+    int e_count;
+    Edge* mst = get_mst(m, &e_count);
     if (!mst) return sol;
 
-    int* degree = (int*)calloc(n, sizeof(int));
-    for (int i = 0; i < edge_count; i++) {
-        degree[mst[i].u]++;
-        degree[mst[i].v]++;
+    int* deg = calloc(n, sizeof(int));
+    for (int i = 0; i < e_count; i++) {
+        deg[mst[i].u]++;
+        deg[mst[i].v]++;
     }
 
-    int* odds = (int*)malloc(n * sizeof(int));
-    int odd_count = 0;
+    int* odds = malloc(n * sizeof(int));
+    int o_cnt = 0;
     for (int i = 0; i < n; i++) {
-        if (degree[i] % 2 != 0) odds[odd_count++] = i;
+        if (deg[i] % 2 != 0) odds[o_cnt++] = i;
     }
 
-    // GREEDY MATCHING
-    bool* matched = (bool*)calloc(odd_count, sizeof(bool));
-    int match_idx = 0;
-    Edge* matching = (Edge*)malloc((odd_count / 2) * sizeof(Edge));
 
-    for (int i = 0; i < odd_count; i++) {
+    bool* matched = calloc(o_cnt, sizeof(bool));
+    Edge* match_edges = malloc((o_cnt / 2) * sizeof(Edge));
+    int m_idx = 0;
+
+    for (int i = 0; i < o_cnt; i++) {
         if (matched[i]) continue;
         int best_j = -1;
-        double min_d = INF;
-        for (int j = i + 1; j < odd_count; j++) {
+        double min_val = INF;
+
+        for (int j = i + 1; j < o_cnt; j++) {
             if (!matched[j]) {
                 double d = get_dist(m, odds[i], odds[j]);
-                if (d < min_d) { min_d = d; best_j = j; }
+                if (d < min_val) { min_val = d; best_j = j; }
             }
         }
         if (best_j != -1) {
-            matched[i] = true;
-            matched[best_j] = true;
-            matching[match_idx].u = odds[i];
-            matching[match_idx].v = odds[best_j];
-            matching[match_idx].weight = min_d;
-            match_idx++;
+            matched[i] = matched[best_j] = true;
+            match_edges[m_idx].u = odds[i];
+            match_edges[m_idx].v = odds[best_j];
+            m_idx++;
         }
     }
 
-    // BUILD MULTIGRAPH
-    int** adj = (int**)malloc(n * sizeof(int*));
-    int* mg_degree = (int*)calloc(n, sizeof(int));
-    int** edge_exists = (int**)malloc(n * sizeof(int*));
+
+    int** adj = malloc(n * sizeof(int*));
+    int* mg_deg = calloc(n, sizeof(int));
+    int** edge_map = malloc(n * sizeof(int*));
+
     for (int i = 0; i < n; i++) {
-        adj[i] = (int*)malloc((n * 2) * sizeof(int)); // Capacity for multigraph
-        edge_exists[i] = (int*)calloc(n, sizeof(int));
+        adj[i] = malloc((n * 2) * sizeof(int));
+        edge_map[i] = calloc(n, sizeof(int));
     }
 
-    // Add MST edges
-    for (int i = 0; i < edge_count; i++) {
-        int u = mst[i].u;
-        int v = mst[i].v;
-        adj[u][mg_degree[u]++] = v;
-        adj[v][mg_degree[v]++] = u;
-        edge_exists[u][v]++;
-        edge_exists[v][u]++;
+    for (int i = 0; i < e_count; i++) {
+        int u = mst[i].u, v = mst[i].v;
+        adj[u][mg_deg[u]++] = v; adj[v][mg_deg[v]++] = u;
+        edge_map[u][v]++; edge_map[v][u]++;
     }
 
-    // Add Matching edges
-    for (int i = 0; i < match_idx; i++) {
-        int u = matching[i].u;
-        int v = matching[i].v;
-        adj[u][mg_degree[u]++] = v;
-        adj[v][mg_degree[v]++] = u;
-        edge_exists[u][v]++;
-        edge_exists[v][u]++;
+    for (int i = 0; i < m_idx; i++) {
+        int u = match_edges[i].u, v = match_edges[i].v;
+        adj[u][mg_deg[u]++] = v; adj[v][mg_deg[v]++] = u;
+        edge_map[u][v]++; edge_map[v][u]++;
     }
 
-    // FIND EULERIAN CIRCUIT
-    int* euler_path = (int*)malloc((edge_count + match_idx + 1) * sizeof(int));
-    int euler_idx = 0;
-    find_eulerian_circuit(0, adj, mg_degree, edge_exists, euler_path, &euler_idx);
+    int* e_path = malloc((e_count + m_idx + 1) * sizeof(int));
+    int e_idx = 0;
+    find_eulerian_circuit_iterative(0, adj, mg_deg, edge_map, e_path, &e_idx);
 
-    // SHORTCUTTING (Eulerian -> Hamiltonian)
-    bool* visited = (bool*)calloc(n, sizeof(bool));
-    int sol_idx = 0;
-    for (int i = euler_idx - 1; i >= 0; i--) {
-        if (!visited[euler_path[i]]) {
-            sol.path[sol_idx++] = euler_path[i];
-            visited[euler_path[i]] = true;
+
+    // shortcut to hamiltonian
+    bool* seen = calloc(n, sizeof(bool));
+    int s_idx = 0;
+    for (int i = e_idx - 1; i >= 0; i--) {
+        if (!seen[e_path[i]]) {
+            sol.path[s_idx++] = e_path[i];
+            seen[e_path[i]] = true;
         }
     }
 
-    // FINAL COST CALCULATION
     sol.cost = 0.0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
         sol.cost += get_dist(m, sol.path[i], sol.path[(i + 1) % n]);
-    }
 
     sol.success = true;
-    sol.time_ms = get_time_ms() - start_time;
+    sol.time_ms = get_time_ms() - t_start;
 
-    // CLEANUP
-    for (int i = 0; i < n; i++) { free(adj[i]); free(edge_exists[i]); }
-    free(adj); free(edge_exists); free(mg_degree); free(degree); free(odds);
-    free(matched); free(matching); free(mst); free(visited); free(euler_path);
+    for (int i = 0; i < n; i++) { free(adj[i]); free(edge_map[i]); }
+    free(adj); free(edge_map); free(mg_deg); free(deg); free(odds);
+    free(matched); free(match_edges); free(mst); free(seen); free(e_path);
 
     return sol;
 }

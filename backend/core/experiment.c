@@ -5,54 +5,62 @@
 #include "utils.h"
 #include <stdlib.h>
 
-RangeResult* run_range_analysis(int n_start, int n_end, int step, bool force_metric, int* result_count) {
-    int count = 0;
-    for (int i = n_start; i <= n_end; i += step) {
-        count++;
-    }
-    *result_count = count;
 
-    RangeResult* results = (RangeResult*)malloc(count * sizeof(RangeResult));
+// Main runner for the Performance Lab analysis
+RangeResult* run_range_analysis(int start, int end, int step, bool metric, int* out_count) {
+    int count = 0;
+    for (int i = start; i <= end; i += step) count++;
+
+    *out_count = count;
+    RangeResult* res_list = malloc(count * sizeof(RangeResult));
     int idx = 0;
 
-    for (int n = n_start; n <= n_end; n += step) {
-        Matrix m = generate_matrix(n, force_metric, force_metric);
-        
-        Solution sol_exact;
+    for (int n = start; n <= end; n += step) {
+        // generate test data for this N
+        Matrix m = generate_matrix(n, metric, metric);
+
+        Solution s_exact;
+        // Watchdog: only run DP if within safety limits to avoid Nitro freezing
         if (n <= MAX_NODES_DP) {
-            sol_exact = tsp_dp(&m);
+            s_exact = tsp_dp(&m);
         } else {
-            sol_exact = create_solution(n);
+            s_exact = create_solution(n); // return empty if too heavy
         }
 
-        Solution sol_greedy = tsp_greedy(&m);
-        Solution sol_chris = tsp_christofides(&m);
+        Solution s_greedy = tsp_greedy(&m);
+        Solution s_chris  = tsp_christofides(&m);
 
-        results[idx].n = n;
-        results[idx].exact_cost = sol_exact.success ? sol_exact.cost : -1.0;
-        results[idx].exact_time_ms = sol_exact.success ? sol_exact.time_ms : -1.0;
-        
-        results[idx].greedy_cost = sol_greedy.success ? sol_greedy.cost : -1.0;
-        results[idx].greedy_time_ms = sol_greedy.success ? sol_greedy.time_ms : -1.0;
-        
-        results[idx].christofides_cost = sol_chris.success ? sol_chris.cost : -1.0;
-        results[idx].christofides_time_ms = sol_chris.success ? sol_chris.time_ms : -1.0;
 
-        if (sol_exact.success && sol_exact.cost > 0) {
-            results[idx].greedy_ratio = results[idx].greedy_cost / results[idx].exact_cost;
-            results[idx].christofides_ratio = results[idx].christofides_cost / results[idx].exact_cost;
+        // Pack results
+        res_list[idx].n = n;
+
+        res_list[idx].exact_cost = s_exact.success ? s_exact.cost : -1.0;
+        res_list[idx].exact_time_ms = s_exact.success ? s_exact.time_ms : -1.0;
+
+        res_list[idx].greedy_cost = s_greedy.success ? s_greedy.cost : -1.0;
+        res_list[idx].greedy_time_ms = s_greedy.success ? s_greedy.time_ms : -1.0;
+
+        res_list[idx].christofides_cost = s_chris.success ? s_chris.cost : -1.0;
+        res_list[idx].christofides_time_ms = s_chris.success ? s_chris.time_ms : -1.0;
+
+
+        // Calculate approximation ratios relative to optimal (1.0 is perfect)
+        if (s_exact.success && s_exact.cost > 0) {
+            res_list[idx].greedy_ratio = res_list[idx].greedy_cost / res_list[idx].exact_cost;
+            res_list[idx].christofides_ratio = res_list[idx].christofides_cost / res_list[idx].exact_cost;
         } else {
-            results[idx].greedy_ratio = -1.0;
-            results[idx].christofides_ratio = -1.0;
+            res_list[idx].greedy_ratio = -1.0;
+            res_list[idx].christofides_ratio = -1.0;
         }
 
-        free_solution(&sol_exact);
-        free_solution(&sol_greedy);
-        free_solution(&sol_chris);
+        // Cleanup this iteration's memory
+        free_solution(&s_exact);
+        free_solution(&s_greedy);
+        free_solution(&s_chris);
         free_matrix(&m);
-        
+
         idx++;
     }
 
-    return results;
+    return res_list;
 }

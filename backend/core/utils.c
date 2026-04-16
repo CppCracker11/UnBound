@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 
+// helper to init the solution struct
 Solution create_solution(int n) {
     Solution sol;
     sol.n = n;
@@ -19,40 +20,44 @@ void free_solution(Solution* sol) {
     }
 }
 
+// simple check for matrix symmetry
 bool check_symmetry(const Matrix* m) {
-    for (int i = 0; i < m->n; i++) {
-        for (int j = 0; j < m->n; j++) {
-            if (fabs(get_dist(m, i, j) - get_dist(m, j, i)) > 1e-9) {
+    int n = m->n;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            // standard float comparison epsilon
+            if (fabs(get_dist(m, i, j) - get_dist(m, j, i)) > 1e-9)
                 return false;
-            }
         }
     }
     return true;
 }
 
+// verifying triangle inequality: dist(i,j) + dist(j,k) >= dist(i,k)
 bool check_triangle_inequality(const Matrix* m) {
-    for (int i = 0; i < m->n; i++) {
-        for (int j = 0; j < m->n; j++) {
-            for (int k = 0; k < m->n; k++) {
+    int n = m->n;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            for (int k = 0; k < n; k++) {
                 if (i == j || j == k || i == k) continue;
-                if (get_dist(m, i, j) + get_dist(m, j, k) < get_dist(m, i, k) - 1e-9) {
+                if (get_dist(m, i, j) + get_dist(m, j, k) < get_dist(m, i, k) - 1e-9)
                     return false;
-                }
             }
         }
     }
     return true;
 }
 
+// Prim's algorithm for MST
 Edge* get_mst(const Matrix* m, int* edge_count) {
     int n = m->n;
     *edge_count = 0;
     if (n <= 1) return NULL;
 
-    Edge* mst = (Edge*)malloc((n - 1) * sizeof(Edge));
-    double* min_weight = (double*)malloc(n * sizeof(double));
-    int* parent = (int*)malloc(n * sizeof(int));
-    bool* in_mst = (bool*)malloc(n * sizeof(bool));
+    Edge* mst = malloc((n - 1) * sizeof(Edge));
+    double* min_weight = malloc(n * sizeof(double));
+    int* parent = malloc(n * sizeof(int));
+    bool* in_mst = malloc(n * sizeof(bool));
 
     for (int i = 0; i < n; i++) {
         min_weight[i] = INF;
@@ -63,12 +68,13 @@ Edge* get_mst(const Matrix* m, int* edge_count) {
     min_weight[0] = 0.0;
 
     for (int count = 0; count < n - 1; count++) {
-        double min = INF;
+        double min_val = INF;
         int u = -1;
 
+        // find next closest node
         for (int v = 0; v < n; v++) {
-            if (!in_mst[v] && min_weight[v] < min) {
-                min = min_weight[v];
+            if (!in_mst[v] && min_weight[v] < min_val) {
+                min_val = min_weight[v];
                 u = v;
             }
         }
@@ -76,13 +82,12 @@ Edge* get_mst(const Matrix* m, int* edge_count) {
         if (u == -1) break;
         in_mst[u] = true;
 
+        // update weights for neighbors
         for (int v = 0; v < n; v++) {
-            if (!in_mst[v]) {
-                double weight = get_dist(m, u, v);
-                if (weight < min_weight[v]) {
-                    parent[v] = u;
-                    min_weight[v] = weight;
-                }
+            double weight = get_dist(m, u, v);
+            if (!in_mst[v] && weight < min_weight[v]) {
+                parent[v] = u;
+                min_weight[v] = weight;
             }
         }
     }
@@ -98,8 +103,11 @@ Edge* get_mst(const Matrix* m, int* edge_count) {
     }
 
     *edge_count = idx;
+
+    // cleanup temp buffers
     free(min_weight);
     free(parent);
     free(in_mst);
+
     return mst;
 }

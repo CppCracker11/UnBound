@@ -3,6 +3,7 @@
 #include <math.h>
 #include <time.h>
 
+
 void free_matrix(Matrix* m) {
     if (m && m->data) {
         free(m->data);
@@ -10,22 +11,29 @@ void free_matrix(Matrix* m) {
     }
 }
 
-Matrix generate_matrix(int n, bool force_metric, bool force_symmetric) {
+
+Matrix generate_matrix(int n, bool metric, bool symmetric) {
     Matrix m;
     m.n = n;
-    m.is_metric = force_metric;
-    m.is_symmetric = force_metric ? true : force_symmetric;
-    m.data = (double*)malloc(n * n * sizeof(double));
+    m.is_metric = metric;
+
+    // metric implies symmetric in this implementation
+    m.is_symmetric = metric ? true : symmetric;
+    m.data = malloc(n * n * sizeof(double));
 
     srand((unsigned int)time(NULL));
 
-    if (force_metric) {
-        double* x = (double*)malloc(n * sizeof(double));
-        double* y = (double*)malloc(n * sizeof(double));
+
+    if (metric) {
+        // generate random coordinates to ensure triangle inequality holds
+        double* x = malloc(n * sizeof(double));
+        double* y = malloc(n * sizeof(double));
+
         for (int i = 0; i < n; i++) {
             x[i] = (rand() % 1000) + ((double)rand() / RAND_MAX);
             y[i] = (rand() % 1000) + ((double)rand() / RAND_MAX);
         }
+
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 if (i == j) {
@@ -37,9 +45,13 @@ Matrix generate_matrix(int n, bool force_metric, bool force_symmetric) {
                 }
             }
         }
+
         free(x);
         free(y);
-    } else {
+    }
+
+    else {
+        // non-metric random generation
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 if (i == j) {
@@ -49,7 +61,8 @@ Matrix generate_matrix(int n, bool force_metric, bool force_symmetric) {
                 }
             }
         }
-        if (force_symmetric) {
+
+        if (symmetric) {
             for (int i = 0; i < n; i++) {
                 for (int j = i + 1; j < n; j++) {
                     m.data[j * n + i] = m.data[i * n + j];
@@ -57,5 +70,6 @@ Matrix generate_matrix(int n, bool force_metric, bool force_symmetric) {
             }
         }
     }
+
     return m;
 }
