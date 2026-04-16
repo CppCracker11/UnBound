@@ -1,89 +1,59 @@
-import ctypes
-import os
-import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
-from fastapi.staticfiles import StaticFiles
+from .models import MatrixInput, RangeRequest
+from .bridge_wrapper import create_c_matrix, wrap_solution, wrap_range_results, lib
+import ctypes
 
-def get_resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
-
-ext = ".dll" if os.name == "nt" else ".so"
-lib_name = f"libtspexact{ext}"
-lib_path = get_resource_path(lib_name)
-
-try:
-    tsp_lib = ctypes.CDLL(lib_path)
-    print(f"Successfully loaded C-Engine: {lib_path}")
-except OSError as e:
-    print(f"CRITICAL ERROR: Could not find {lib_name} at {lib_path}")
-    try:
-        fallback_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "engines", lib_name))
-        tsp_lib = ctypes.CDLL(fallback_path)
-        print(f"Loaded via fallback path: {fallback_path}")
-    except:
-        print("All paths failed. Please ensure the DLL is in the engines folder or root.")
-        raise e
-
-tsp_lib.tsp_dp.argtypes = [ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
-tsp_lib.tsp_dp.restype = ctypes.c_double
-
-tsp_lib.tsp_backtracking.argtypes = [ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
-tsp_lib.tsp_backtracking.restype = ctypes.c_double
-
-app = FastAPI()
+app = FastAPI(title="UnBound v3.0 API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class City(BaseModel):
-    x: float
-    y: float
-
-class TSPRequest(BaseModel):
-    cities: List[City]
-    algorithm: str 
-
-@app.post("/solve")
-async def solve_tsp(request: TSPRequest):
-    nodes = request.cities
-    n = len(nodes)
-    
-    if n < 2:
-        raise HTTPException(status_code=400, detail="At least 2 cities required.")
-
-    matrix = []
-    for i in range(n):
-        for j in range(n):
-            d = ((nodes[i].x - nodes[j].x)**2 + (nodes[i].y - nodes[j].y)**2)**0.5
-            matrix.append(d)
-
-    c_matrix = (ctypes.c_double * len(matrix))(*matrix)
-    c_path = (ctypes.c_int * n)()
-
-    if "dp" in request.algorithm.lower():
-        cost = tsp_lib.tsp_dp(c_matrix, n, c_path)
-    else:
-        cost = tsp_lib.tsp_backtracking(c_matrix, n, c_path)
-
-    optimized_path = [c_path[i] for i in range(n)]
-
+@app.post("/diagnose")
+def diagnose_matrix(payload: MatrixInput):
+    c_matrix = create_c_matrix(payload.matrix, payload.n, payload.is_metric, payload.is_symmetric)
+    report = lib.api_run_diagnostics(ctypes.byref(c_matrix))
     return {
-        "cost": round(cost, 2),
-        "path": optimized_path,
-        "n": n
+        "is_symmetric": report.is_symmetric,
+        "triangle_inequality": report.triangle_inequality,
+        "recommendation": report.recommendation.decode('utf-8'),
+        "est_time_dp_ms": report.est_time_dp_ms,
+        "est_time_bt_ms": report.est_time_bt_ms
     }
 
-if os.path.exists(get_resource_path("static")):
-    app.mount("/", StaticFiles(directory=get_resource_path("static"), html=True), name="static")
+@app.post("/solve/{algo}")
+def solve_tsp(algo: str, payload: MatrixInput):
+    c_matrix = create_c_matrix(payload.matrix, payload.n, payload.is_metric, payload.is_symmetric)
+    
+    if algo == "dp":
+        sol = lib.api_solve_dp(ctypes.byref(c_matrix))
+    elif algo == "bt":
+        sol = lib.api_solve_bt(ctypes.byref(c_matrix))
+    elif algo == "greedy":
+        sol = lib.api_solve_greedy(ctypes.byref(c_matrix))
+    elif algo == "christofides" or algo == "chris":
+        sol = lib.api_solve_christofides(ctypes.byref(c_matrix))
+    else:
+        raise HTTPException(status_code=400, detail="Invalid algorithm parameter")
+        
+    return wrap_solution(sol, algo)
+
+@app.post("/experiment/range")
+def run_experiment(req: RangeRequest):
+    count = ctypes.c_int()
+    ptr = lib.api_run_range(req.start_n, req.end_n, req.step, req.force_metric, ctypes.byref(count))
+    if not ptr:
+        raise HTTPException(status_code=500, detail="Experiment failed in C-Engine")
+    
+    return wrap_range_results(ptr, count.value)
+
+@app.get("/generate/{n}")
+def generate_random(n: int, metric: bool = True):
+    c_mat = lib.api_generate_matrix(n, metric, True)
+    data_list = [c_mat.data[i] for i in range(n * n)]
+    return {"matrix": data_list, "n": n}
