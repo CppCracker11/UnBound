@@ -38,7 +38,7 @@ Open your terminal and pull the code to your local machine:
 
 
 
-git clone https://github.com/YOUR\_USERNAME/UnBound.git
+git clone https://github.com/CppCracker11/UnBound.git
 
 cd UnBound
 
